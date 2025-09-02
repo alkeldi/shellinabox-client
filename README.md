@@ -38,5 +38,5 @@ apt install -y openssl shellinabox
 
 Then, we can try this project by running
 ```
-python main.py https://localhost:5555 --no-warnings
+python main.py https://localhost:5555 --no-verify
 ```
