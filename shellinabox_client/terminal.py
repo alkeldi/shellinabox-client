@@ -3,6 +3,7 @@ import sys
 import tty
 import queue
 import termios
+import signal
 import requests
 import threading
 from .client import ShellInABoxClient
@@ -21,11 +22,19 @@ class ShellInABoxTerminal():
         self.old_tty_settings = None
         self.exit_error = None
 
-    def update_terminal_size(self):
+    def update_terminal_size(self) -> None:
         with self.shared_lock:
             terminal_size = os.get_terminal_size()
             self.client.width = terminal_size.columns
             self.client.height = terminal_size.lines
+
+    def terminal_resize_handler(self, signum, frame) -> None:
+        try:
+            self.update_terminal_size()
+            self.input_queue.put("")
+        except Exception as e:
+            self.stop(e)
+            return
 
     def stop(self, e: Exception = None) -> None:
         sys.stdout.flush()
@@ -58,7 +67,6 @@ class ShellInABoxTerminal():
                     self.stop(e)
                     return
             try:
-                self.update_terminal_size()
                 self.client.send(keys)
             except Exception as e:
                 self.stop(e)
@@ -79,7 +87,6 @@ class ShellInABoxTerminal():
     def output_receiver(self) -> None:
         while not self.terminated.is_set():
             try:
-                self.update_terminal_size()
                 data = self.client.receive()
                 self.output_queue.put(data)
             except Exception as e:
@@ -97,6 +104,8 @@ class ShellInABoxTerminal():
                 return
 
     def start(self) -> None:
+        self.update_terminal_size()
+        signal.signal(signal.SIGWINCH, self.terminal_resize_handler)
         self.client.connect()
         self.output_receiving_thread.start()
         self.output_printing_thread.start()
