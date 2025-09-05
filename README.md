@@ -1,8 +1,8 @@
-# Python Client for ShellInABox
-This is a python client to access ShellInABox programmatically or using a terminal emulator.
+# Python Controller for ShellInABox
+This is a python controller to access ShellInABox programmatically or using a terminal emulator.
 
 ## Getting Started
-You can import this package and programmatically interact with the ShellInABox server. Alternatively, you can use the included terminal client to access the remote server from your local terminal.
+You can import this package and programmatically interact with the ShellInABox server. Alternatively, you can use this project to access the remote ShellInABox server from your local terminal.
 
 ### Prepare the `python` Environment
 ```
@@ -11,7 +11,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Run Terminal Client
+### Interactive Terminal
 ```
 % python terminal.py <url>
 ```
@@ -19,52 +19,40 @@ pip install -r requirements.txt
 ### Integration with pexpect
 ```python
 import os
-import urllib3
-import requests
+import httpx
+import asyncio
 import pexpect.fdpexpect
-from shellinabox_client import ShellInABoxClient
+from shellinabox_controller import ShellInABoxController
 
-# create http session
-session = requests.Session()
-session.verify = False
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+async def main():
+    # create http client
+    client = httpx.AsyncClient(verify=False)
 
-# create pipes
-reader_fd, stdout_fd = os.pipe()
-stdin_fd, writer_fd = os.pipe()
-stdout = os.fdopen(stdout_fd, "w")
-stdin = os.fdopen(stdin_fd, "r")
-reader = os.fdopen(reader_fd, "r")
-writer = os.fdopen(writer_fd, "w")
+    # create shellinabox controller
+    controller = ShellInABoxController(url="https://localhost:5555/", client=client)
+    reader_fd, writer_fd = await controller.control()
 
-# create shellinabox client
-client = ShellInABoxClient(url="https://localhost:5555/", session=session)
-client.start(stdout=stdout, stdin=stdin)
+    # connect the shellinabox controller to pexpect
+    writer = os.fdopen(writer_fd, "bw", buffering=0)
+    child = pexpect.fdpexpect.fdspawn(reader_fd)
 
-# use with pexpect
-child = pexpect.fdpexpect.fdspawn(reader.fileno())
-username = "root"
-password = "root"
-command = "ls /"
-child.expect("login")
-writer.write(f"{username}\n")
-writer.flush()
-child.expect("Password")
-writer.write(f"{password}\n")
-writer.flush()
-child.expect("# ")
-writer.write(f"{command}\n")
-writer.flush()
-child.expect("# ")
-output = child.before.decode("utf-8")
-print(output[len(command) + 2:])
+    # use pexpect
+    username = "root"
+    password = "root"
+    command = "ls /"
+    await child.expect("login", async_=True)
+    writer.write(f"{username}\n".encode())
+    await child.expect("Password", async_=True)
+    writer.write(f"{password}\n".encode())
+    await child.expect("# ", async_=True)
+    writer.write(f"{command}\n".encode())
+    await child.expect("# ", async_=True)
+    output = child.before.decode("utf-8")
+    print(output)
 
-# cleanup
-client.stop()
-reader.close()
-writer.close()
-stdout.close()
-stdin.close()
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ### Testing - Using ShellInABox in Docker
