@@ -1,2 +1,1 @@
-from .client import ShellInABoxClient, ShellInABoxClientError
-from .terminal import ShellInABoxTerminal
+from .client import ShellInABoxClient

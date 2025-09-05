@@ -2,11 +2,11 @@ import sys
 import urllib3
 import requests
 import argparse
-from shellinabox_client import ShellInABoxTerminal, ShellInABoxClient, ShellInABoxClientError
+from shellinabox_client import ShellInABoxClient
 
 def main():
     # parse arguments
-    parser = argparse.ArgumentParser(description="A ShellInABox Terminal Client")
+    parser = argparse.ArgumentParser(description="A ShellInABox Terminal Emulator")
     parser.add_argument("url", type=str, help="URL to a ShellInABox instance")
     parser.add_argument("--no-verify", action='store_true', help="disable http security verifications")
     args = parser.parse_args()
@@ -22,9 +22,8 @@ def main():
     # create shellinabox client
     client = ShellInABoxClient(url=args.url, session=session)
 
-    # start terminal client
-    terminal = ShellInABoxTerminal(client=client)
-    terminal.start()
+    # interact
+    client.interact()
 
 
 if __name__ == "__main__":
@@ -47,11 +46,8 @@ if __name__ == "__main__":
         sys.stderr.write(f"Error: {message}\n")
         sys.stderr.flush()
         sys.exit(1)
-    except (requests.exceptions.HTTPError, ShellInABoxClientError) as e:
-        sys.stderr.write(f"Error: {e}\n")
-        sys.stderr.flush()
-        sys.exit(1)
-    except Exception as e:
-        sys.stderr.write(f"Error: unknown error\n")
-        sys.stderr.flush()
-        sys.exit(1)
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code not in [400]:
+            sys.stderr.write(f"Error: HTTP Error {e.response.status_code}\n")
+            sys.stderr.flush()
+            sys.exit(1)

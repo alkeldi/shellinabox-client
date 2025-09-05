@@ -13,7 +13,58 @@ pip install -r requirements.txt
 
 ### Run Terminal Client
 ```
-% python main.py <url>
+% python terminal.py <url>
+```
+
+### Integration with pexpect
+```python
+import os
+import urllib3
+import requests
+import pexpect.fdpexpect
+from shellinabox_client import ShellInABoxClient
+
+# create http session
+session = requests.Session()
+session.verify = False
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# create pipes
+reader_fd, stdout_fd = os.pipe()
+stdin_fd, writer_fd = os.pipe()
+stdout = os.fdopen(stdout_fd, "w")
+stdin = os.fdopen(stdin_fd, "r")
+reader = os.fdopen(reader_fd, "r")
+writer = os.fdopen(writer_fd, "w")
+
+# create shellinabox client
+client = ShellInABoxClient(url="https://localhost:5555/", session=session)
+client.start(stdout=stdout, stdin=stdin)
+
+# use with pexpect
+child = pexpect.fdpexpect.fdspawn(reader.fileno())
+username = "root"
+password = "root"
+command = "ls /"
+child.expect("login")
+writer.write(f"{username}\n")
+writer.flush()
+child.expect("Password")
+writer.write(f"{password}\n")
+writer.flush()
+child.expect("# ")
+writer.write(f"{command}\n")
+writer.flush()
+child.expect("# ")
+output = child.before.decode("utf-8")
+print(output[len(command) + 2:])
+
+# cleanup
+client.stop()
+reader.close()
+writer.close()
+stdout.close()
+stdin.close()
 ```
 
 ### Testing - Using ShellInABox in Docker
@@ -38,5 +89,5 @@ apt install -y openssl shellinabox
 
 Then, we can try this project by running
 ```
-python main.py https://localhost:5555 --no-verify
+python terminal.py https://localhost:5555 --no-verify
 ```
