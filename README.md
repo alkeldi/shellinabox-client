@@ -58,8 +58,12 @@ if __name__ == "__main__":
 ### Testing - Using ShellInABox in Docker
 The following commands will bringup a docker container and run shellinabox at https://localhost:5555/. The username and password for the container are both `root`.
 ```
+make container
+```
+Or you can run the container manually
+```
 # On the docker host
-docker run --rm -it -p 5555:5555 ubuntu bash
+docker run --name shellinabox --rm -it -p 5555:5555 ubuntu bash
 
 # Inside the docker container
 echo "root:root" | chpasswd
