@@ -1,12 +1,15 @@
+"""A ShellInABox Remote Terminal"""
 import sys
-import httpx
 import asyncio
 import argparse
+
+import httpx
 from shellinabox_controller import ShellInABoxController
 
 async def main():
+    """Proram Entrypoint"""
     # parse arguments
-    parser = argparse.ArgumentParser(description="A ShellInABox Terminal Controller")
+    parser = argparse.ArgumentParser(description="A ShellInABox Remote Terminal")
     parser.add_argument("url", type=str, help="URL to a ShellInABox instance")
     parser.add_argument("--no-verify", action='store_true', help="disable http security verifications")
     args = parser.parse_args()
@@ -23,19 +26,21 @@ async def main():
 
 if __name__ == "__main__":
     try:
+        ERROR = None
         asyncio.run(main())
     except httpx.HTTPStatusError as e:
         if e.response.status_code not in [400, 500]:
-            sys.stderr.write(f"Error: HTTP Error {e.response.status_code}\n")
+            ERROR = f"HTTP Error {e.response.status_code}"
+    except httpx.ConnectError as e:
+        ERROR = str(e)
+        if len(ERROR) == 0:
+            ERROR = "Connection Error"
+    except Exception as e:
+        ERROR = str(e)
+        if len(ERROR) == 0:
+            ERROR = f"Unknown Error ({type(e)})"
+    finally:
+        if ERROR is not None:
+            sys.stderr.write(f"Error: {ERROR}\n")
             sys.stderr.flush()
             sys.exit(1)
-    except httpx.ConnectError as e:
-        msg = str(e)
-        if len(msg) > 0:
-            print(f"Error: {msg}")
-        else:
-            print(f"Error: Connection error")
-        sys.exit(1)
-    except Exception as e:
-        print(f"Error: {e}")
-        sys.exit(1)
