@@ -35,5 +35,7 @@ if __name__ == "__main__":
             print(f"Error: {msg}")
         else:
             print(f"Error: Connection error")
+        sys.exit(1)
     except Exception as e:
         print(f"Error: {e}")
+        sys.exit(1)
