@@ -1,128 +1,162 @@
-"""ShellInABox Controller Module"""
+"""`ShellInABox` Controller Module"""
 import os
-import io
 import sys
 import tty
 import signal
 import asyncio
 import termios
 import functools
-from typing import Tuple
+import threading
 
 import httpx
 
 class ShellInABoxController():
-    """ShellInABox Controller Class"""
-    def __init__(self, url: str, client: httpx.AsyncClient = None, width: int = 128, height: int = 32):
-        self.url = url
-        if client:
-            self.client = client
-        else:
-            self.client = httpx.AsyncClient()
-        self.width = width
-        self.height = height
-        self.session = None
+    """`ShellInABox` Controller Class"""
+    def __init__(self, client: httpx.AsyncClient, url: str, width: int = 128, height: int = 32):
+        """
+        `ShellInABox` Controller
 
-    async def update_terminal_size(self, width: int, height: int) -> None:
+        Parameters
+        ----------
+        client: httpx.AsyncClient
+            `HTTP` client used to interact with the remote `ShellInABox` instance.
+        url: str
+            The URL of the remote `ShellInABox` instance.
+        width: int
+            The terminal width of the `ShellInABox` session.
+        height: int
+            The terminal height of the `ShellInABox` session.
         """
-        Update the terminal size. If a shellinabox session is active,
-        then immediately send the update to the remote terminal.
-        """
-        self.width = width
-        self.height = height
-        if self.session is not None:
-            response = await self.client.post(self.url, data={
-                "width": self.width,
-                "height": self.height,
-                "session": self.session,
+        self._url = url
+        self._client = client
+        self._width = width
+        self._height = height
+        self._session = None
+        self._running = False
+        self._shared_lock = threading.Lock()
+
+    def _internal_terminal_resize_signal_handler(self, loop: asyncio.AbstractEventLoop) -> None:
+        terminal_size = os.get_terminal_size()
+        loop.create_task(self._internal_update_terminal_size(
+            width=terminal_size.columns,
+            height=terminal_size.lines
+        ))
+
+    async def _internal_update_terminal_size(self, width: int, height: int) -> None:
+        with self._shared_lock:
+            self._width = width
+            self._height = height
+        if self._session is not None:
+            response = await self._client.post(self._url, data={
+                "width": self._width,
+                "height": self._height,
+                "session": self._session,
                 "keys": "",
             })
             response.raise_for_status()
 
-    async def input_handler_task(self, reader: asyncio.StreamReader) -> None:
-        """
-        Continuously watch for input from the `reader` stream in an infinite loop.
-        When some input is received, then send it to the remote terminal.
-        Unless an error occurs, this funcion will run forever.
-        """
+    async def _internal_input_handler_task(self, reader: asyncio.StreamReader) -> None:
         while True:
             data = await reader.read(128)
-            response = await self.client.post(self.url, data={
-                "width": self.width,
-                "height": self.height,
-                "session": self.session,
+            response = await self._client.post(self._url, data={
+                "width": self._width,
+                "height": self._height,
+                "session": self._session,
                 "keys": data.hex(),
             })
             response.raise_for_status()
 
-    async def output_handler_task(self, writer: asyncio.StreamWriter) -> None:
-        """
-        Continuously listen for output from the remote terminal in an infinite loop.
-        When some output is received, then write it to the `writer` stream.
-        Unless an error occurs, this funcion will run forever.
-        """
+    async def _internal_output_handler_task(self, writer: asyncio.StreamWriter) -> None:
         while True:
-            response = await self.client.post(self.url, timeout=None, data={
-                "width": self.width,
-                "height": self.height,
-                "session": self.session,
+            response = await self._client.post(self._url, timeout=None, data={
+                "width": self._width,
+                "height": self._height,
+                "session": self._session,
             })
             response.raise_for_status()
             data: bytes = response.json()["data"].encode()
             writer.write(data)
             await writer.drain()
 
-    async def run_forever(self, stdin: io.TextIOWrapper, stdout: io.TextIOWrapper) -> None:
-        """
-        Start a new shellinabox session and trigger `input_handler_task` and `output_handler_task`.
-        Both tasks run in an infinite loop (asynchronously). So this function will `gather` both tasks.
-        Unless an error occurs, this funcion will run forever.
-        """
-        response = await self.client.post(self.url, data={
-            "width": self.width,
-            "height": self.height,
-            "rooturl": self.url,
+    async def _internal_run_forever(self, input_fd: int, output_fd: int) -> None:
+        response = await self._client.post(self._url, data={
+            "width": self._width,
+            "height": self._height,
+            "rooturl": self._url,
         })
         response.raise_for_status()
-        self.session = response.json()["session"]
+        self._session = response.json()["session"]
+        output_file = os.fdopen(output_fd, "w")
+        if input_fd != output_fd:
+            input_file = os.fdopen(input_fd, "r")
+        else:
+            input_file = output_file
         loop = asyncio.get_running_loop()
         reader = asyncio.StreamReader()
         protocol = asyncio.StreamReaderProtocol(reader)
-        await loop.connect_read_pipe(lambda: protocol, stdin)
-        w_transport, w_protocol = await loop.connect_write_pipe(asyncio.streams.FlowControlMixin, stdout)
+        await loop.connect_read_pipe(lambda: protocol, input_file)
+        w_transport, w_protocol = await loop.connect_write_pipe(
+            asyncio.streams.FlowControlMixin,
+            output_file
+        )
         writer = asyncio.StreamWriter(w_transport, w_protocol, reader, loop)
         await asyncio.gather(
-            self.input_handler_task(reader),
-            self.output_handler_task(writer)
+            self._internal_input_handler_task(reader),
+            self._internal_output_handler_task(writer)
         )
 
-    async def control(self) -> Tuple[int, int]:
-        """
-        Take control over the remote shellinabox terminal.
-        Returns two file descriptors `reader_fd`, `writer_fd`.
-        Use `reader_fd` for receiving output from the remote terminal's stdout,
-        and `writer_fd` for sending input to the remote terminal's stdin.
-        """
-        reader_fd, stdout_fd = os.pipe()
-        stdin_fd, writer_fd = os.pipe()
-        stdout = os.fdopen(stdout_fd, "w")
-        stdin = os.fdopen(stdin_fd, "r")
-        asyncio.create_task(self.run_forever(stdin=stdin, stdout=stdout))
-        return reader_fd, writer_fd
-
-    async def interact(self) -> None:
-        """Start an interactive terminal shell"""
-        def terminal_resize_signal_handler(loop: asyncio.AbstractEventLoop) -> None:
-            terminal_size = os.get_terminal_size()
-            loop.create_task(self.update_terminal_size(width=terminal_size.columns, height=terminal_size.lines))
-        loop = asyncio.get_running_loop()
-        loop.add_signal_handler(signal.SIGWINCH, functools.partial(terminal_resize_signal_handler, loop))
-        fd = sys.stdin.fileno()
-        old_tty_settings = termios.tcgetattr(fd)
-        terminal_size = os.get_terminal_size()
+    async def _internal_run_forever_interactive(self, input_fd: int, output_fd: int) -> None:
         try:
-            tty.setraw(fd)
-            await self.update_terminal_size(width=terminal_size.columns, height=terminal_size.lines)
-            await self.run_forever(stdin=sys.stdin, stdout=sys.stdout)
+            loop = asyncio.get_running_loop()
+            loop.add_signal_handler(
+                signal.SIGWINCH,
+                functools.partial(self._internal_terminal_resize_signal_handler, loop)
+            )
+            terminal_size = os.get_terminal_size()
+            await self._internal_update_terminal_size(
+                width=terminal_size.columns,
+                height=terminal_size.lines
+            )
+        except RuntimeError:
+            # NOTE: ignore errors if we can't register a terminal resize handler
+            #       This normaly happens when running outside the main thread
+            pass
+        old_tty_settings = None
+        try:
+            old_tty_settings = termios.tcgetattr(input_fd)
+            tty.setraw(input_fd)
+            await self._internal_run_forever(input_fd=input_fd, output_fd=output_fd)
         finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_tty_settings)
+            if old_tty_settings is not None:
+                termios.tcsetattr(input_fd, termios.TCSADRAIN, old_tty_settings)
+
+    async def run(self, input_fd : int = None, output_fd : int = None, interactive = False) -> None:
+        """
+        Run ShellInABox Controller
+
+        Parameters
+        ----------
+        input_fd: int
+            The controller's input file descriptor.
+            If the value of `input_fd` is not provided (i.e. `None`),
+            then `sys.stdin.fileno()` is used as default.
+        output_fd: int
+            The controller's output file descriptor.
+            If the value of `output_fd` is not provided (i.e. `None`),
+            then `sys.stdout.fileno()` is used as default.
+        interactive: bool
+            Enable richer support for interactive terminals.
+            This option is only valid when `input_fd` supports raw mode.
+        """
+        with self._shared_lock:
+            if self._running:
+                raise RuntimeError("Controller is already running")
+            self._running = True
+        if input_fd is None:
+            input_fd = sys.stdin.fileno()
+        if output_fd is None:
+            output_fd = sys.stdout.fileno()
+        if interactive:
+            await self._internal_run_forever_interactive(input_fd=input_fd, output_fd=output_fd)
+        else:
+            await self._internal_run_forever(input_fd=input_fd, output_fd=output_fd)

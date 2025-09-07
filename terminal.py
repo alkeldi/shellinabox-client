@@ -10,8 +10,16 @@ async def main():
     """Proram Entrypoint"""
     # parse arguments
     parser = argparse.ArgumentParser(description="A ShellInABox Remote Terminal")
-    parser.add_argument("url", type=str, help="URL to a ShellInABox instance")
-    parser.add_argument("--no-verify", action='store_true', help="disable http security verifications")
+    parser.add_argument(
+        "url",
+        type=str,
+        help="URL to a ShellInABox instance"
+    )
+    parser.add_argument(
+        "--no-verify",
+        action='store_true',
+        help="disable http security verifications"
+    )
     args = parser.parse_args()
 
     # create http client
@@ -21,7 +29,7 @@ async def main():
     controller = ShellInABoxController(url=args.url, client=client)
 
     # interact
-    await controller.interact()
+    await controller.run(interactive=True)
 
 
 if __name__ == "__main__":
@@ -35,10 +43,6 @@ if __name__ == "__main__":
         ERROR = str(e)
         if len(ERROR) == 0:
             ERROR = "Connection Error"
-    except Exception as e:
-        ERROR = str(e)
-        if len(ERROR) == 0:
-            ERROR = f"Unknown Error ({type(e)})"
     finally:
         if ERROR is not None:
             sys.stderr.write(f"Error: {ERROR}\n")

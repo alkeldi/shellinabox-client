@@ -1,2 +1,2 @@
-"""ShellInABox Controller Package"""
+"""`ShellInABox` Controller Package"""
 from .controller import ShellInABoxController

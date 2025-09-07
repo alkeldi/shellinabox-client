@@ -1,22 +1,80 @@
-# Python Controller for ShellInABox
-This is a python controller to access ShellInABox programmatically or using a terminal emulator.
+# Python Controller for `ShellInABox`
+This is a python controller to access `ShellInABox` programmatically or using a terminal emulator.
 
 ## Getting Started
-You can import this package and programmatically interact with the ShellInABox server. Alternatively, you can use this project to access the remote ShellInABox server from your local terminal.
+You can import this package and programmatically interact with the `ShellInABox` instance. Alternatively, you can use this project to access the remote `ShellInABox` instance from your local terminal.
 
 ### Prepare the `python` Environment
-```
+```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
 ### Interactive Terminal
+```bash
+python terminal.py --no-verify <url>
 ```
-% python terminal.py <url>
+Replace `<url>` with your actual `ShellInABox` URL. Note that `--no-verify` is used to disable http security verifications.
+You can run `make container` to bringup a `ShellInABox` docker container at https://localhost:5555
+
+### Example 1: Using in synchronous code (Separate Thread)
+```python
+import httpx
+import asyncio
+import threading
+from shellinabox_controller import ShellInABoxController
+
+def main():
+    client = httpx.AsyncClient(verify=False)
+    controller = ShellInABoxController(client, url="https://localhost:5555/")
+    controller_thread = threading.Thread(
+        target=asyncio.run,
+        args=(controller.run(interactive=True),)
+    )
+    controller_thread.start()
+    print("You can do other stuff here, like printing this message")
+    controller_thread.join()
+
+if __name__ == "__main__":
+    main()
+
 ```
 
-### Integration with pexpect
+### Example 2: Using in synchronous code (Same Thread)
+```python
+import httpx
+import asyncio
+from shellinabox_controller import ShellInABoxController
+
+def main():
+    client = httpx.AsyncClient(verify=False)
+    controller = ShellInABoxController(client, url="https://localhost:5555/")
+    asyncio.run(controller.run(interactive=True))
+    print("This will not be printed")
+
+if __name__ == "__main__":
+    main()
+
+```
+
+### Example 3: Using in asynchronous code
+```python
+import httpx
+import asyncio
+from shellinabox_controller import ShellInABoxController
+
+async def main():
+    client = httpx.AsyncClient(verify=False)
+    controller = ShellInABoxController(client, url="https://localhost:5555/")
+    await controller.run(interactive=True)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+
+```
+
+### Example 4: Integration with `pexpect`
 ```python
 import os
 import httpx
@@ -25,12 +83,14 @@ import pexpect.fdpexpect
 from shellinabox_controller import ShellInABoxController
 
 async def main():
-    # create http client
-    client = httpx.AsyncClient(verify=False)
+    # create pipes
+    reader_fd, output_fd = os.pipe()
+    input_fd, writer_fd = os.pipe()
 
     # create shellinabox controller
-    controller = ShellInABoxController(url="https://localhost:5555/", client=client)
-    reader_fd, writer_fd = await controller.control()
+    client = httpx.AsyncClient(verify=False)
+    controller = ShellInABoxController(client, url="https://localhost:5555/")
+    asyncio.create_task(controller.run(input_fd=input_fd, output_fd=output_fd))
 
     # connect the shellinabox controller to pexpect
     writer = os.fdopen(writer_fd, "bw", buffering=0)
@@ -50,21 +110,24 @@ async def main():
     output = child.before.decode("utf-8")
     print(output)
 
-
 if __name__ == "__main__":
     asyncio.run(main())
+
 ```
 
-### Testing - Using ShellInABox in Docker
-The following commands will bringup a docker container and run shellinabox at https://localhost:5555/. The username and password for the container are both `root`.
-```
+### Testing - Starting up `ShellInABox` in Docker
+The following commands will bringup a docker container and run `ShellInABox` at https://localhost:5555/. The username and password for the container are both `root`.
+```bash
+# On the docker host (keep it running)
 make container
 ```
-Or you can run the container manually
-```
-# On the docker host
+**Alternatively, you can run the container manually as following:**
+```bash
+# On the docker host (keep it running)
 docker run --name shellinabox --rm -it -p 5555:5555 ubuntu bash
+```
 
+```bash
 # Inside the docker container
 echo "root:root" | chpasswd
 apt update
@@ -80,6 +143,6 @@ apt install -y openssl shellinabox
 ```
 
 Then, we can try this project by running
-```
+```bash
 python terminal.py https://localhost:5555 --no-verify
 ```

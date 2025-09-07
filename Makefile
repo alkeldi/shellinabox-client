@@ -41,6 +41,6 @@ clean:
 help:
 	@echo "Available targets:"
 	@echo "  container - Runs shellinabox test container on port $(CONTAINER_PORT)"
-	@echo "  lint      - Runs pylint on all Python files"
+	@echo "  lint      - Runs pylint on all python files"
 	@echo "  clean     - Removes generated files and caches"
 	@echo "  help      - Displays this help message"
