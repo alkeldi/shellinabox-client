@@ -58,6 +58,9 @@ class ShellInABoxController():
     async def _internal_input_handler_task(self, reader: asyncio.StreamReader) -> None:
         while True:
             data = await reader.read(128)
+            if data == b"":
+                await asyncio.sleep(0)
+                continue
             response = await self._client.post(self._url, data={
                 "width": self._width,
                 "height": self._height,
