@@ -11,26 +11,35 @@ import threading
 import httpx
 
 class ShellInABoxController():
-    """`ShellInABox` Controller Class"""
-    def __init__(self, client: httpx.AsyncClient, url: str, width: int = 128, height: int = 32):
-        """
-        `ShellInABox` Controller
+    """
+    `ShellInABox` Controller.
 
-        Parameters
-        ----------
-        client: httpx.AsyncClient
-            `HTTP` client used to interact with the remote `ShellInABox` instance.
-        url: str
-            The URL of the remote `ShellInABox` instance.
-        width: int
-            The terminal width of the `ShellInABox` session.
-        height: int
-            The terminal height of the `ShellInABox` session.
-        """
+    Parameters
+    ----------
+    * **url** - URL of the remote `ShellInABox` instance.
+    * **width** - *(optional)* Default terminal width.
+    * **height** - *(optional)* Default terminal height.
+    * **verify** - *(optional)* Enable/Disable SSL verification.
+    * **client** - *(optional)* Use a custom HTTP client.
+    """
+    def __init__(
+        self,
+        url: str,
+        width: int = 128,
+        height: int = 32,
+        verify: bool = True,
+        client: httpx.AsyncClient = None,
+    ) -> None:
+        if not isinstance(verify, bool):
+            raise ValueError("Argument `verify` must be of type `bool`.")
+        if not isinstance(client, httpx.AsyncClient) and client is not None:
+            raise ValueError("Argument `client` must be of type `httpx.AsyncClient`.")
         self._url = url
-        self._client = client
         self._width = width
         self._height = height
+        self._client = client
+        if self._client is None:
+            self._client = httpx.AsyncClient(verify=verify)
         self._session = None
         self._running = False
         self._shared_lock = threading.Lock()
@@ -133,23 +142,18 @@ class ShellInABoxController():
             if old_tty_settings is not None:
                 termios.tcsetattr(input_fd, termios.TCSADRAIN, old_tty_settings)
 
-    async def run(self, input_fd : int = None, output_fd : int = None, interactive = False) -> None:
+    async def run(self, input_fd: int = None, output_fd: int = None, interactive = False) -> None:
         """
         Run ShellInABox Controller
 
         Parameters
         ----------
-        input_fd: int
-            The controller's input file descriptor.
-            If the value of `input_fd` is not provided (i.e. `None`),
-            then `sys.stdin.fileno()` is used as default.
-        output_fd: int
-            The controller's output file descriptor.
-            If the value of `output_fd` is not provided (i.e. `None`),
-            then `sys.stdout.fileno()` is used as default.
-        interactive: bool
-            Enable richer support for interactive terminals.
-            This option is only valid when `input_fd` supports raw mode.
+        * **input_fd** - *(optional)* The controller's input file descriptor.
+        If this value is `None`, then `sys.stdin.fileno()` is used as default.
+        * **output_fd** - *(optional)* The controller's output file descriptor.
+        If this value is `None`, then `sys.stdout.fileno()` is used as default.
+        * **interactive** - *(optional)* Enable support for interactive terminals.
+        This option is only valid when `input_fd` supports raw mode.
         """
         with self._shared_lock:
             if self._running:

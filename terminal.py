@@ -7,7 +7,7 @@ import httpx
 from shellinabox_controller import ShellInABoxController
 
 async def main():
-    """Proram Entrypoint"""
+    """Program Entrypoint"""
     # parse arguments
     parser = argparse.ArgumentParser(description="A ShellInABox Remote Terminal")
     parser.add_argument(
@@ -22,11 +22,8 @@ async def main():
     )
     args = parser.parse_args()
 
-    # create http client
-    client = httpx.AsyncClient(verify=not args.no_verify)
-
     # create shellinabox controller
-    controller = ShellInABoxController(url=args.url, client=client)
+    controller = ShellInABoxController(args.url, verify=not args.no_verify)
 
     # interact
     await controller.run(interactive=True)

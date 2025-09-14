@@ -20,14 +20,12 @@ You can run `make container` to bringup a `ShellInABox` docker container at http
 
 ### Example 1: Using in synchronous code (Separate Thread)
 ```python
-import httpx
 import asyncio
 import threading
 from shellinabox_controller import ShellInABoxController
 
 def main():
-    client = httpx.AsyncClient(verify=False)
-    controller = ShellInABoxController(client, url="https://localhost:5555/")
+    controller = ShellInABoxController("https://localhost:5555/", verify=False)
     controller_thread = threading.Thread(
         target=asyncio.run,
         args=(controller.run(interactive=True),)
@@ -43,13 +41,11 @@ if __name__ == "__main__":
 
 ### Example 2: Using in synchronous code (Same Thread)
 ```python
-import httpx
 import asyncio
 from shellinabox_controller import ShellInABoxController
 
 def main():
-    client = httpx.AsyncClient(verify=False)
-    controller = ShellInABoxController(client, url="https://localhost:5555/")
+    controller = ShellInABoxController("https://localhost:5555/", verify=False)
     asyncio.run(controller.run(interactive=True))
     print("This will not be printed")
 
@@ -60,13 +56,11 @@ if __name__ == "__main__":
 
 ### Example 3: Using in asynchronous code
 ```python
-import httpx
 import asyncio
 from shellinabox_controller import ShellInABoxController
 
 async def main():
-    client = httpx.AsyncClient(verify=False)
-    controller = ShellInABoxController(client, url="https://localhost:5555/")
+    controller = ShellInABoxController("https://localhost:5555/", verify=False)
     await controller.run(interactive=True)
 
 if __name__ == "__main__":
@@ -77,7 +71,6 @@ if __name__ == "__main__":
 ### Example 4: Integration with `pexpect`
 ```python
 import os
-import httpx
 import asyncio
 import pexpect.fdpexpect
 from shellinabox_controller import ShellInABoxController
@@ -88,8 +81,7 @@ async def main():
     input_fd, writer_fd = os.pipe()
 
     # create shellinabox controller
-    client = httpx.AsyncClient(verify=False)
-    controller = ShellInABoxController(client, url="https://localhost:5555/")
+    controller = ShellInABoxController("https://localhost:5555/", verify=False)
     asyncio.create_task(controller.run(input_fd=input_fd, output_fd=output_fd))
 
     # connect the shellinabox controller to pexpect
